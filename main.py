@@ -30,7 +30,6 @@ def run_web():
 # --- Your bot logic goes here...
 # (keep all your event handlers like on_message, on_reaction_add, etc.)
 target_bot_id = 1312830013573169252  # Target bot ID
-trigger_keyword = "nc"
 message_timeout = 60  # seconds
 
 # Mappings
@@ -52,6 +51,22 @@ def clear_user_data(user_id):
 async def expire_user_mapping(user_id, delay):
     await asyncio.sleep(delay)
     clear_user_data(user_id)
+
+# Extract card code
+def extract_card_codes_from_field(field_value):
+    codes = []
+    lines = field_value.strip().splitlines()
+
+    for line in lines:
+        parts = line.split('•')
+        if len(parts) >= 4:
+            # The third • segment should contain the card code inside backticks
+            raw_segment = parts[3].strip()
+            match = re.search(r'`([^`]+)`', raw_segment)
+            if match:
+                code = match.group(1).strip()
+                codes.append(code)
+    return codes
 
 @client.event
 async def on_message(message):
@@ -111,7 +126,7 @@ async def on_message(message):
         return
 
     # --- Feature 2: 'nc' code tracking ---
-    if message.content.lower() == trigger_keyword:
+    if message.content.lower().startswith("nc ") or message.content.lower() == "nc":
         # Clear old mappings for this user
         clear_user_data(message.author.id)
 
@@ -179,25 +194,25 @@ async def extract_and_send_card_codes(message, user):
 
     for embed in message.embeds:
         for field in embed.fields:
-            codes = re.findall(r"`([^`]+)`", field.value)
-            if len(codes) >= 3:
-                code = codes[2].strip()
+            new_codes = extract_card_codes_from_field(field.value)
+            for code in new_codes:
                 if code not in stored:
                     stored.append(code)
 
+
     if len(stored) > before_count:
         combined = ', '.join(stored)
-        response_text = f"Card Codes for {user.mention}: {combined}"
+        response_text = f"{combined}"
 
         previous_msg = user_response_message.get(user.id)
         if previous_msg:
             try:
                 await previous_msg.edit(content=response_text)
             except discord.NotFound:
-                new_msg = await message.channel.send(response_text)
+                new_msg = await message.reply(response_text, mention_author=False)
                 user_response_message[user.id] = new_msg
         else:
-            new_msg = await message.channel.send(response_text)
+            new_msg = await message.reply(response_text, mention_author=False)
             user_response_message[user.id] = new_msg
 
 # --- Main entry point
