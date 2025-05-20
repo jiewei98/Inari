@@ -1,6 +1,6 @@
-# iRain ☔
+# Inari ☔
 
-**Nairi Helper Bot**
+**Utility bot for Nairi**
 
 ---
 

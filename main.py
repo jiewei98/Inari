@@ -146,7 +146,6 @@ async def on_message(message):
                 bot_message = await message.channel.fetch_message(bot_message.id)
 
             if not bot_message.embeds:
-                await message.channel.send("The bot's message had no embeds.")
                 return
 
             message_user_map[bot_message.id] = message.author.id
@@ -154,7 +153,7 @@ async def on_message(message):
             await bot_message.add_reaction("📝")
 
         except asyncio.TimeoutError:
-            await message.channel.send("An error occurred.")
+            return
 
 @client.event
 async def on_reaction_add(reaction, user):
