@@ -5,8 +5,6 @@ import asyncio
 
 # --- Third-party packages ---
 import discord
-import threading  # Run Flask and bot together
-from flask import Flask
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -20,16 +18,6 @@ intents.reactions = True
 intents.messages = True
 
 client = commands.Bot(command_prefix="!", intents=intents)
-
-# --- Flask web server setup
-app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return "Bot is running!"
-
-def run_web():
-    app.run(host='0.0.0.0', port=8080)
 
 # --- Your bot logic goes here...
 # (keep all your event handlers like on_message, on_reaction_add, etc.)
@@ -242,7 +230,7 @@ async def delete_message(interaction: discord.Interaction, message: discord.Mess
         return
 
     try:
-        # Acknowledge first
+        # Fix: Acknowledge first
         await interaction.response.defer(ephemeral=True)
 
         await message.delete()
@@ -261,5 +249,4 @@ async def on_ready():
 
 # --- Main entry point
 if __name__ == "__main__":
-    threading.Thread(target=run_web).start()  # Run Flask on a separate thread
     client.run(os.getenv("TOKEN"))            # Start Discord bot
