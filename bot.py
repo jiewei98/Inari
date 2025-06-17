@@ -102,15 +102,24 @@ async def on_message(message):
         raw_card_line = fields[1].value.strip() if len(fields) > 1 else ""
         owned_by = fields[2].value.strip() if len(fields) > 2 else "Unknown"
 
+        # Extract card code and print number
         code_match = re.findall(r"`([^`]+)`", raw_card_line)
         card_code = code_match[0] if len(code_match) > 0 else "Unknown"
-        card_number = code_match[2] if len(code_match) > 2 else "Unknown"
-        card_number = card_number.replace("P-", "P")
-        card_tier = "T1"
+        card_print = code_match[1] if len(code_match) > 1 else "Unknown"
+        card_print = card_print.replace("P-", "P")
+
+        # Determine tier from placeholder
+        TIER_PLACEHOLDER_MAP = {
+            "sReCBQAkp3iWWpmo+/1/SwL8CGeIaImHZw==": "T1",
+            "sheCBQAkqGiVa5nJ/f5vSwL8CFeHeImHaA==": "T2"
+        }
+
+        placeholder = embed.thumbnail.placeholder if embed.thumbnail and hasattr(embed.thumbnail, "placeholder") else ""
+        card_tier = TIER_PLACEHOLDER_MAP.get(placeholder, "T1")  # default to T1
 
         formatted = (
             f"Card Code: {card_code}\n"
-            f"{card_number} • {card_name} • {card_series} [ {card_tier} ]\n"
+            f"{card_print} • {card_name} • {card_series} [ {card_tier} ]\n"
             f"{owned_by}\n"
             f"Preference: {preference}"
         )
@@ -230,7 +239,7 @@ async def delete_message(interaction: discord.Interaction, message: discord.Mess
         return
 
     try:
-        # Fix: Acknowledge first
+        # Acknowledge first
         await interaction.response.defer(ephemeral=True)
 
         await message.delete()
