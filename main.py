@@ -193,8 +193,10 @@ async def on_message(message):
         
     # --- Feature 4: nv/nview command enforcement in XXX channel ---
     if message.channel.id in print_ranges:
+        if message.author.bot or message.author.id == target_bot_id:
+            return
+        
         allowed_min, allowed_max = print_ranges[message.channel.id]
-
         parts = content.lower().strip().split()
         
         if not parts or parts[0] not in ("nv", "nview"):
