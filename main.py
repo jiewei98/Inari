@@ -35,6 +35,22 @@ def run_web():
 # (keep all your event handlers like on_message, on_reaction_add, etc.)
 target_bot_id = 1312830013573169252  # Target bot ID
 server_id = 938644623394492428 # Server ID
+warning_channel_id = 1373574689682751560  # Nairi-market-warn
+# Map channel ID to allowed print range (inclusive)
+print_ranges = {
+    # T1 channels
+    1348297134281326632: (1, 10),      # t1-exclusive-print
+    1348297179281887422: (11, 99),     # t1-low-print
+    1348297282428076112: (100, 999),   # t1-mid-print
+    1348298215497404459: (1000, 2500), # t1-high-print
+
+    # T2 channels
+    1381958187103817758: (1, 10),      # t2-exclusive-print
+    1381958240790646874: (11, 99),     # t2-low-print
+    1381958270402691214: (100, 999),   # t2-mid-print
+
+    # 1353381835547344987: (1, 10),      # observation-room for testing
+}
 message_timeout = 60  # seconds
 
 # Mappings
@@ -73,13 +89,22 @@ def extract_card_codes_from_field(field_value):
                 codes.append(code)
     return codes
 
+# Extract card code and print number
+def parse_card_line_for_code_and_print(raw_card_line):
+    code_match = re.findall(r"`([^`]+)`", raw_card_line)
+    card_code = code_match[0] if len(code_match) > 0 else "Unknown"
+    card_print = code_match[1] if len(code_match) > 1 else "Unknown"
+    card_print = card_print.replace("P-", "P")
+    return card_code, card_print
+
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
 
+    content = message.content.strip().lower()
     # --- Feature 1: %auc reply parser ---
-    if message.content.lower().startswith('%auc'):
+    if content.lower().startswith('%auc'):
         if not message.reference or not isinstance(message.reference.resolved, discord.Message):
             await message.channel.send("read <#1348292826609221642> on how to use `%auc`")
             return
@@ -92,7 +117,7 @@ async def on_message(message):
 
         embed = original.embeds[0]
         fields = embed.fields
-        command_parts = message.content.split(maxsplit=1)
+        command_parts = content.split(maxsplit=1)
         preference = "<:jades:1351944414104129599>"
 
         emoji_map = {
@@ -115,10 +140,7 @@ async def on_message(message):
         owned_by = fields[2].value.strip() if len(fields) > 2 else "Unknown"
 
         # Extract card code and print number
-        code_match = re.findall(r"`([^`]+)`", raw_card_line)
-        card_code = code_match[0] if len(code_match) > 0 else "Unknown"
-        card_print = code_match[1] if len(code_match) > 1 else "Unknown"
-        card_print = card_print.replace("P-", "P")
+        card_code, card_print = parse_card_line_for_code_and_print(raw_card_line)
 
         # Determine tier from placeholder
         TIER_PLACEHOLDER_MAP = {
@@ -140,7 +162,7 @@ async def on_message(message):
         return
 
     # --- Feature 2: 'nc' code tracking ---
-    if message.content.lower().startswith("nc ") or message.content.lower() == "nc":
+    if content == "nc" or content.startswith("nc ") or content == "ncollection" or content.startswith("ncollection "):
         # Clear old mappings for this user
         clear_user_data(message.author.id)
 
@@ -168,6 +190,84 @@ async def on_message(message):
 
         except asyncio.TimeoutError:
             return
+        
+    # --- Feature 4: nv/nview command enforcement in XXX channel ---
+    if message.channel.id in print_ranges:
+        allowed_min, allowed_max = print_ranges[message.channel.id]
+
+        parts = content.lower().strip().split()
+        
+        if not parts or parts[0] not in ("nv", "nview"):
+            # Invalid command, delete
+            try:
+                await message.delete()
+            except discord.Forbidden:
+                pass
+            return
+        # else valid command
+
+        def check_bot_reply(m):
+            return (
+                m.author.id == target_bot_id and
+                m.channel.id == message.channel.id and
+                m.reference and
+                m.reference.message_id == message.id
+            )
+
+        try:
+            bot_reply = await client.wait_for("message", timeout=10.0, check=check_bot_reply)
+
+            for _ in range(10):
+                if bot_reply.embeds:
+                    break
+                await asyncio.sleep(0.5)
+                bot_reply = await message.channel.fetch_message(bot_reply.id)
+
+            if not bot_reply.embeds:
+                return
+
+            embed = bot_reply.embeds[0]
+            fields = embed.fields
+
+            if len(fields) < 2:
+                return
+
+            raw_card_line = fields[1].value.strip()
+            card_code, card_print = parse_card_line_for_code_and_print(raw_card_line)
+
+            match = re.search(r"P?(\d+)", card_print)
+            if not match:
+                return
+
+            print_number = int(match.group(1))
+
+            if print_number < allowed_min or print_number > allowed_max:
+                try:
+                    await message.delete()
+                except discord.Forbidden:
+                    pass
+
+                try:
+                    await bot_reply.delete()
+                except discord.NotFound:
+                    pass
+                except discord.Forbidden:
+                    pass
+
+                # Still send the warning regardless
+                warning_channel = client.get_channel(warning_channel_id)
+                if warning_channel:
+                    try:
+                        await warning_channel.send(
+                            f"{message.author.mention}, your recently posted card {card_code} has a print number {print_number}, "
+                            f"which is not allowed in {message.channel.mention}. Please check the print number and post in the correct channel."
+                        )
+                    except discord.Forbidden:
+                        pass
+
+        except asyncio.TimeoutError:
+            return
+
 
 @client.event
 async def on_reaction_add(reaction, user):
