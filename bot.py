@@ -2,6 +2,7 @@
 import os
 import re
 import asyncio
+import datetime
 
 # --- Third-party packages ---
 import discord
@@ -19,13 +20,38 @@ intents.messages = True
 
 client = commands.Bot(command_prefix="!", intents=intents)
 
-# --- Your bot logic goes here...
-# (keep all your event handlers like on_message, on_reaction_add, etc.)
-target_bot_id = 1312830013573169252  # Target bot ID
-server_id = 938644623394492428 # Server ID
-warning_channel_id = 1373574689682751560  # Nairi-market-warn
+# --- Variables declaration
+TARGET_BOT_ID = 1312830013573169252  # Target bot ID
+SERVER_ID = 938644623394492428 # Server ID
+# SERVER_ID = 866730377258074152 # Test server ID
+WARNING_CHANNEL_ID = 1373574689682751560  # Nairi-market-warn
+AUTO_CLOSE_THREAD_CHANNEL_IDS = {
+    # 1403052540223815700, # Test channel
+
+    # Nairi auction channels
+    1348289832388001803, # nairi-auction-1
+    1348289882287640596, # nairi-auction-2
+    1348289907910512831, # nairi-auction-3
+    1355878579375833098, # nairi-auction-4
+    1391049063129944195, # nairi-code-auction
+
+    # Sofi auction channels
+    973938253180850236, # glow-auction
+    1089023076617949194, # frame-auction
+    1081575442730979391, # sofi-code-auction
+    1329789950215983106, # banner-auction
+    973938304540098610, # morph-auction
+    987751892132184127, # vip-auction
+    1194976596239601764, # vip-auction-2
+    938664690983272489, # sofi-auction-1
+    938664738831863868, # sofi-auction-2
+    938666930720608277, # sofi-auction-3
+    938664487727292426, # sofi-auction-4
+    952500783734210560, # sofi-auction-5
+    1042089121830670346, # sofi-auction-6
+}
 # Map channel ID to allowed print range (inclusive)
-print_ranges = {
+PRINT_RANGES = {
     # T1 channels
     1348297134281326632: (1, 10),      # t1-exclusive-print
     1348297179281887422: (11, 99),     # t1-low-print
@@ -39,7 +65,13 @@ print_ranges = {
 
     # 1353381835547344987: (1, 10),      # observation-room for testing
 }
-message_timeout = 60  # seconds
+MESSAGE_TIMEOUT = 60  # seconds
+# Target auto-close time in SGT (24-hour format)
+AUTO_CLOSE_HOUR =22
+AUTO_CLOSE_MINUTE = 00
+MIN_THREAD_AGE_HOURS = 20 # 20 hours for actual
+# MIN_THREAD_AGE_HOURS = 0.25 # 15 minutes for testing
+# MIN_THREAD_AGE_HOURS = 0.001 # 3.6 seconds for testing
 
 # Mappings
 user_card_codes = {}           # user_id: list of card codes
@@ -47,6 +79,7 @@ message_user_map = {}          # message_id: user_id
 user_response_message = {}     # user_id: response message
 user_wants_to_copy = {}        # user_id: bool
 
+# --- Methods declaration
 # Cleanup function
 def clear_user_data(user_id):
     user_card_codes.pop(user_id, None)
@@ -99,7 +132,7 @@ async def on_message(message):
 
         original = message.reference.resolved
 
-        if original.author.id != target_bot_id or not original.embeds:
+        if original.author.id != TARGET_BOT_ID or not original.embeds:
             await message.channel.send("read <#1348292826609221642> on how to use `%auc`")
             return
 
@@ -155,10 +188,10 @@ async def on_message(message):
         clear_user_data(message.author.id)
 
         # Start timeout to expire mapping
-        asyncio.create_task(expire_user_mapping(message.author.id, message_timeout))
+        asyncio.create_task(expire_user_mapping(message.author.id, MESSAGE_TIMEOUT))
 
         def check(m):
-            return m.author.id == target_bot_id and m.channel == message.channel
+            return m.author.id == TARGET_BOT_ID and m.channel == message.channel
 
         try:
             bot_message = await client.wait_for("message", timeout=10.0, check=check)
@@ -180,11 +213,11 @@ async def on_message(message):
             return
         
     # --- Feature 4: nv/nview command enforcement in XXX channel ---
-    if message.channel.id in print_ranges:
-        if message.author.bot or message.author.id == target_bot_id:
+    if message.channel.id in PRINT_RANGES:
+        if message.author.bot or message.author.id == TARGET_BOT_ID:
             return
         
-        allowed_min, allowed_max = print_ranges[message.channel.id]
+        allowed_min, allowed_max = PRINT_RANGES[message.channel.id]
         parts = content.lower().strip().split()
         
         if not parts or parts[0] not in ("nv", "nview"):
@@ -198,7 +231,7 @@ async def on_message(message):
 
         def check_bot_reply(m):
             return (
-                m.author.id == target_bot_id and
+                m.author.id == TARGET_BOT_ID and
                 m.channel.id == message.channel.id and
                 m.reference and
                 m.reference.message_id == message.id
@@ -245,7 +278,7 @@ async def on_message(message):
                     pass
 
                 # Still send the warning regardless
-                warning_channel = client.get_channel(warning_channel_id)
+                warning_channel = client.get_channel(WARNING_CHANNEL_ID)
                 if warning_channel:
                     try:
                         await warning_channel.send(
@@ -263,7 +296,7 @@ async def on_message(message):
 async def on_reaction_add(reaction, user):
     if user == client.user:
         return
-    if reaction.message.author.id != target_bot_id or reaction.emoji != "📝":
+    if reaction.message.author.id != TARGET_BOT_ID or reaction.emoji != "📝":
         return
 
     user_id = message_user_map.get(reaction.message.id)
@@ -275,7 +308,7 @@ async def on_reaction_add(reaction, user):
 
 @client.event
 async def on_message_edit(before, after):
-    if after.author.id != target_bot_id or not after.embeds:
+    if after.author.id != TARGET_BOT_ID or not after.embeds:
         return
 
     user_id = message_user_map.get(after.id)
@@ -321,7 +354,7 @@ async def extract_and_send_card_codes(message, user):
 @client.tree.context_menu(name="Delete Nairi Message")
 async def delete_message(interaction: discord.Interaction, message: discord.Message):
     # --- Feature 3: deleting your nairi messages ---
-    if message.author.id != target_bot_id:
+    if message.author.id != TARGET_BOT_ID:
         await interaction.response.send_message(
             "You can only delete messages from Nairi.", ephemeral=True
         )
@@ -354,8 +387,41 @@ async def delete_message(interaction: discord.Interaction, message: discord.Mess
             "I don't have permission to delete that message.", ephemeral=True
         )
 
+last_run_date = None
+
+async def auto_close_threads_task():
+    global last_run_date
+    await client.wait_until_ready()
+    while not client.is_closed():
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        now_sgt = now_utc + datetime.timedelta(hours=8)  # SGT is UTC+8
+        today_date = now_sgt.date()
+
+        if ((now_sgt.hour > AUTO_CLOSE_HOUR) or
+            (now_sgt.hour == AUTO_CLOSE_HOUR and now_sgt.minute >= AUTO_CLOSE_MINUTE)) \
+            and last_run_date != today_date:
+
+            guild = client.get_guild(SERVER_ID)
+            if guild:
+                try:
+                    all_threads = await guild.active_threads()
+                    for thread in all_threads:
+                        if thread.parent_id in AUTO_CLOSE_THREAD_CHANNEL_IDS and not thread.locked:
+                            thread_age = now_utc - thread.created_at
+                            if thread_age.total_seconds() >= MIN_THREAD_AGE_HOURS * 3600:
+                                await thread.edit(archived=True, locked=True)
+                except Exception as e:
+                    pass
+
+            last_run_date = today_date
+            await asyncio.sleep(60 * 60 * 23)  # Sleep ~23 hours
+
+        else:
+            await asyncio.sleep(60)
+
 @client.event
 async def on_ready():
+    client.loop.create_task(auto_close_threads_task())
     await client.tree.sync()  # sync globally
 
 # --- Main entry point
