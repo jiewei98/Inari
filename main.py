@@ -75,6 +75,9 @@ PRINT_RANGES = {
     1381958187103817758: {"tier": "T2", "range": (1, 10)},
     1381958240790646874: {"tier": "T2", "range": (11, 99)},
     1381958270402691214: {"tier": "T2", "range": (100, 999)},
+
+    # Smr25/Summer channel
+    1404784532644954253: {"tier": "Smr25", "range": None},  # No print range enforcement
 }
 MESSAGE_TIMEOUT = 60  # seconds
 MIN_THREAD_AGE_HOURS = 20 # 20 hours for actual
@@ -128,12 +131,10 @@ def parse_card_line_for_code_and_print(raw_card_line):
 
 # Extract card tier
 def get_card_tier_from_embed(embed):
-    """
-    Extract the card tier from the embed's thumbnail placeholder.
-    """
     TIER_PLACEHOLDER_MAP = {
         "sReCBQAkp3iWWpmo+/1/SwL8CGeIaImHZw==": "T1",
-        "sheCBQAkqGiVa5nJ/f5vSwL8CFeHeImHaA==": "T2"
+        "sheCBQAkqGiVa5nJ/f5vSwL8CFeHeImHaA==": "T2",
+        "dAiCBQAkmWa5SI2m+HVgYwXYCGeIZ4h4lw==": "Smr25",
     }
 
     placeholder = ""
@@ -233,8 +234,9 @@ async def on_message(message):
         if message.author.bot or message.author.id == TARGET_BOT_ID:
             return
 
-        expected_tier = PRINT_RANGES[message.channel.id]["tier"]
-        allowed_min, allowed_max = PRINT_RANGES[message.channel.id]["range"]
+        channel_config = PRINT_RANGES[message.channel.id]
+        expected_tier = channel_config["tier"]
+        allowed_range = channel_config["range"]
         parts = content.lower().strip().split()
 
         if not parts or parts[0] not in ("nv", "nview"):
@@ -302,23 +304,30 @@ async def on_message(message):
 
             print_number = int(match.group(1))
 
-            if print_number < allowed_min or print_number > allowed_max:
-                try:
-                    await message.delete()
-                except discord.Forbidden:
-                    pass
+            if allowed_range is not None:
+                allowed_min, allowed_max = allowed_range
+                match = re.search(r"P?(\d+)", card_print)
+                if not match:
+                    return
 
-                try:
-                    await bot_reply.delete()
-                except (discord.NotFound, discord.Forbidden):
-                    pass
+                print_number = int(match.group(1))
+                if print_number < allowed_min or print_number > allowed_max:
+                    try:
+                        await message.delete()
+                    except discord.Forbidden:
+                        pass
 
-                warning_channel = client.get_channel(WARNING_CHANNEL_ID)
-                if warning_channel:
-                    await warning_channel.send(
-                        f"{message.author.mention}, your recently posted card `{card_code}` has print number **{print_number}**, "
-                        f"which is not allowed in {message.channel.mention}. Please check the print number and post in the correct channel."
-                    )
+                    try:
+                        await bot_reply.delete()
+                    except (discord.NotFound, discord.Forbidden):
+                        pass
+
+                    warning_channel = client.get_channel(WARNING_CHANNEL_ID)
+                    if warning_channel:
+                        await warning_channel.send(
+                            f"{message.author.mention}, your recently posted card `{card_code}` has print number **{print_number}**, "
+                            f"which is not allowed in {message.channel.mention}. Please check the print number and post in the correct channel."
+                        )
 
         except asyncio.TimeoutError:
             return
