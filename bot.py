@@ -33,6 +33,7 @@ NAIRI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
     1348289882287640596, # nairi-auction-2
     1348289907910512831, # nairi-auction-3
     1355878579375833098, # nairi-auction-4
+    1431982093935579136, # nairi-auction-5
     1391049063129944195, # nairi-code-auction
 }
 SOFI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
@@ -54,18 +55,18 @@ SOFI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
 # Map channel ID to allowed print range (inclusive)
 PRINT_RANGES = {
     # T1 channels
-    1348297134281326632: {"tier": "T1", "range": (1, 10)},
-    1348297179281887422: {"tier": "T1", "range": (11, 99)},
-    1348297282428076112: {"tier": "T1", "range": (100, 999)},
-    1348298215497404459: {"tier": "T1", "range": (1000, 2500)},
+    1423933041830789181: {"tier": "T1", "range": (1, 10)},
+    1423933021278441544: {"tier": "T1", "range": (11, 99)},
+    1423933005680087040: {"tier": "T1", "range": (100, 999)},
+    1423932992883265557: {"tier": "T1", "range": (1000, 2500)},
 
     # T2 channels
     1381958187103817758: {"tier": "T2", "range": (1, 10)},
-    1381958240790646874: {"tier": "T2", "range": (11, 99)},
-    1381958270402691214: {"tier": "T2", "range": (100, 999)},
+    1423932565378564188: {"tier": "T2", "range": (11, 99)},
+    1423932153615482983: {"tier": "T2", "range": (100, 999)},
 
     # Smr25/Summer channel
-    1404784532644954253: {"tier": "Smr25", "range": None},  # No print range enforcement
+    1423931481411289148: {"tier": "Smr25", "range": None},  # No print range enforcement
 }
 MESSAGE_TIMEOUT = 60  # seconds
 MIN_THREAD_AGE_HOURS = 20 # 20 hours for actual
@@ -418,6 +419,7 @@ async def delete_message(interaction: discord.Interaction, message: discord.Mess
 # --- Feature 5: auto closing auction channels ---
 async def close_threads(channels_to_close, guild, now_utc):
     all_threads = await guild.active_threads()
+
     for thread in all_threads:
         if thread.parent_id in channels_to_close and not thread.locked:
             thread_age = now_utc - thread.created_at
@@ -445,7 +447,7 @@ async def auto_close_task_runner(channels, target_hour, target_minute):
                 await close_threads(channels, guild, now_utc)
 
             last_run_date = today_date
-            await asyncio.sleep(60 * 60 * 23)  # wait ~23 hours
+            await asyncio.sleep(60 * 60 * 21)  # wait ~21 hours
         else:
             await asyncio.sleep(60)
 
