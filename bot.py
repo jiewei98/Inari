@@ -21,7 +21,17 @@ intents.messages = True
 client = commands.Bot(command_prefix="!", intents=intents)
 
 # --- Variables declaration
-TARGET_BOT_ID = 1312830013573169252  # Target bot ID
+WHITELISTED_USERS = {
+    # 319894559880511499, # Boost
+    360651722781097984, # Rain
+    560680700806692865, # Km
+
+    313927988813234176, # Unknown
+    182309538911879179, # Furkat
+    827546618961330177, # Funke
+}
+NAIRI_BOT_ID = 1312830013573169252 # Nairi bot ID
+SOFI_BOT_ID = 853629533855809596 # Sofi bot ID
 SERVER_ID = 938644623394492428 # Server ID
 # SERVER_ID = 866730377258074152 # Test server ID
 WARNING_CHANNEL_ID = 1373574689682751560  # Nairi-market-warn
@@ -37,6 +47,8 @@ NAIRI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
     1391049063129944195, # nairi-code-auction
 }
 SOFI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
+    # 1403052540223815700, # Test channel
+
     # Sofi auction channels
     973938253180850236, # glow-auction
     1089023076617949194, # frame-auction
@@ -67,6 +79,9 @@ PRINT_RANGES = {
 
     # Smr25/Summer channel
     1423931481411289148: {"tier": "Smr25", "range": None},  # No print range enforcement
+
+    # Xmas25/Christmas channel
+    1429445292213669888: {"tier": "Xmas25", "range": None},  # No print range enforcement
 }
 MESSAGE_TIMEOUT = 60  # seconds
 MIN_THREAD_AGE_HOURS = 20 # 20 hours for actual
@@ -124,6 +139,7 @@ def get_card_tier_from_embed(embed):
         "sReCBQAkp3iWWpmo+/1/SwL8CGeIaImHZw==": "T1",
         "sheCBQAkqGiVa5nJ/f5vSwL8CFeHeImHaA==": "T2",
         "dAiCBQAkmWa5SI2m+HVgYwXYCGeIZ4h4lw==": "Smr25",
+        "KymCDQAkGfm6N4Scl2dnYF9FB2iHZ4Z5lw==": "Xmas25",
     }
 
     placeholder = ""
@@ -132,12 +148,97 @@ def get_card_tier_from_embed(embed):
 
     return TIER_PLACEHOLDER_MAP.get(placeholder, "T1")  # Default to T1 if unknown
 
+# Extract the user's name or user ID
+def extract_owner_and_mention(embed):
+    owner_mention = None
+
+    # 1. Check the description first (if it's not None)
+    if embed.description:
+        match = re.search(r"<@!?(\d+)>", embed.description)
+        if match:
+            owner_mention = f"<@{match.group(1)}>"  # Return the user mention if found
+
+    # 2. If no owner mention found in the description, check the embed fields
+    if not owner_mention:  # Only check fields if no owner was found in the description
+        for field in embed.fields:
+            match = re.search(r"<@!?(\d+)>", field.value)
+            if match:
+                owner_mention = f"<@{match.group(1)}>"  # Return the user mention from field value if found
+
+    return owner_mention
+
+# Thread creation to handle rate limit
+async def create_thread_with_rate_limit(channel, message, card_name):
+    try:
+        thread = await channel.create_thread(
+            name=card_name,
+            message=message,
+            type=discord.ChannelType.public_thread
+        )
+        return thread
+    except discord.errors.HTTPException as e:
+        if e.code == 429:  # Rate-limited
+            retry_after = e.retry_after  # Discord will send how long to wait before retrying
+            await asyncio.sleep(retry_after)
+            return await create_thread_with_rate_limit(channel, message, card_name)  # Retry
+
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
 
     content = message.content.strip().lower()
+    # --- Feature 6: %threadcreate ---
+    # Check if the message is from a whitelisted user and starts with the command
+    if content.lower().startswith("%sthread") or content.lower().startswith("%nthread"):
+        if message.author.id not in WHITELISTED_USERS:
+            return
+
+        # Determine which bot and channels to use based on the command
+        if content.lower().startswith("%nthread"):
+            target_bot_id = NAIRI_BOT_ID
+            channel_ids = NAIRI_AUTO_CLOSE_THREAD_CHANNEL_IDS
+        else:
+            target_bot_id = SOFI_BOT_ID
+            channel_ids = SOFI_AUTO_CLOSE_THREAD_CHANNEL_IDS
+        
+        # Fetch all the relevant channels
+        for channel_id in channel_ids:
+            channel = client.get_channel(channel_id)
+
+            if not channel:
+                continue  # Skip if the channel is not available
+
+            # Fetch recent messages from the target bot in the current channel
+            target_bot_messages = []
+            async for msg in channel.history(limit=25):
+                target_bot_messages.append(msg)
+
+            target_bot_messages = [
+                msg for msg in target_bot_messages
+                if msg.author.id == target_bot_id and msg.created_at > datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=21)
+            ]
+
+            if not target_bot_messages:
+                continue  # Skip to the next channel if no valid messages are found
+
+            # Loop through the bot's recent messages to find an appropriate one for creating a thread
+            for bot_msg in target_bot_messages:
+                if bot_msg.embeds:
+                    embed = bot_msg.embeds[0]
+                    card_owner_mention = extract_owner_and_mention(embed)
+                    card_name = embed.title or "Unknown"
+
+                    try:
+                        thread = await create_thread_with_rate_limit(channel, bot_msg, card_name)
+                        # Ping the card owner in the thread
+                        await thread.send(f"{card_owner_mention}")  # Mention the user directly
+                        await asyncio.sleep(1)  # Add a 1-second delay between creating threads
+                    except Exception as e:
+                        pass
+
+        return
+
     # --- Feature 1: %auc reply parser ---
     if content.lower().startswith('%auc'):
         if not message.reference or not isinstance(message.reference.resolved, discord.Message):
@@ -146,7 +247,7 @@ async def on_message(message):
 
         original = message.reference.resolved
 
-        if original.author.id != TARGET_BOT_ID or not original.embeds:
+        if original.author.id != NAIRI_BOT_ID or not original.embeds:
             await message.channel.send("read <#1348292826609221642> on how to use `%auc`")
             return
 
@@ -197,7 +298,7 @@ async def on_message(message):
         asyncio.create_task(expire_user_mapping(message.author.id, MESSAGE_TIMEOUT))
 
         def check(m):
-            return m.author.id == TARGET_BOT_ID and m.channel == message.channel
+            return m.author.id == NAIRI_BOT_ID and m.channel == message.channel
 
         try:
             bot_message = await client.wait_for("message", timeout=10.0, check=check)
@@ -220,7 +321,7 @@ async def on_message(message):
         
     # --- Feature 4: nv/nview command enforcement in XXX channel ---
     if message.channel.id in PRINT_RANGES:
-        if message.author.bot or message.author.id == TARGET_BOT_ID:
+        if message.author.bot or message.author.id == NAIRI_BOT_ID:
             return
 
         channel_config = PRINT_RANGES[message.channel.id]
@@ -237,7 +338,7 @@ async def on_message(message):
 
         def check_bot_reply(m):
             return (
-                m.author.id == TARGET_BOT_ID and
+                m.author.id == NAIRI_BOT_ID and
                 m.channel.id == message.channel.id and
                 m.reference and
                 m.reference.message_id == message.id
@@ -325,7 +426,7 @@ async def on_message(message):
 async def on_reaction_add(reaction, user):
     if user == client.user:
         return
-    if reaction.message.author.id != TARGET_BOT_ID or reaction.emoji != "📝":
+    if reaction.message.author.id != NAIRI_BOT_ID or reaction.emoji != "📝":
         return
 
     user_id = message_user_map.get(reaction.message.id)
@@ -337,7 +438,7 @@ async def on_reaction_add(reaction, user):
 
 @client.event
 async def on_message_edit(before, after):
-    if after.author.id != TARGET_BOT_ID or not after.embeds:
+    if after.author.id != NAIRI_BOT_ID or not after.embeds:
         return
 
     user_id = message_user_map.get(after.id)
@@ -383,7 +484,7 @@ async def extract_and_send_card_codes(message, user):
 @client.tree.context_menu(name="Delete Nairi Message")
 async def delete_message(interaction: discord.Interaction, message: discord.Message):
     # --- Feature 3: deleting your nairi messages ---
-    if message.author.id != TARGET_BOT_ID:
+    if message.author.id != NAIRI_BOT_ID:
         await interaction.response.send_message(
             "You can only delete messages from Nairi.", ephemeral=True
         )
