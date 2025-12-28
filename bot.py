@@ -46,6 +46,16 @@ NAIRI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
     1431982093935579136, # nairi-auction-5
     1391049063129944195, # nairi-code-auction
 }
+LUVI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
+    # Luvi auction channels
+    1447912106233036992,
+    1444953850577420288,
+    1444953888548589619,
+    1447220023247765709,
+    1451918231269937299,
+    1454708241354326210,
+}
+NAIRI_LUVI_AUTO_CLOSE_THREAD_CHANNEL_IDS = NAIRI_AUTO_CLOSE_THREAD_CHANNEL_IDS.union(LUVI_AUTO_CLOSE_THREAD_CHANNEL_IDS)
 SOFI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
     # 1403052540223815700, # Test channel
 
@@ -548,14 +558,14 @@ async def auto_close_task_runner(channels, target_hour, target_minute):
                 await close_threads(channels, guild, now_utc)
 
             last_run_date = today_date
-            await asyncio.sleep(60 * 60 * 21)  # wait ~21 hours
+            await asyncio.sleep(60 * 60 * 20)  # wait ~20 hours
         else:
             await asyncio.sleep(60)
 
 @client.event
 async def on_ready():
     client.loop.create_task(auto_close_task_runner(SOFI_AUTO_CLOSE_THREAD_CHANNEL_IDS, 20, 0))  # 8PM SGT
-    client.loop.create_task(auto_close_task_runner(NAIRI_AUTO_CLOSE_THREAD_CHANNEL_IDS, 22, 0))  # 10PM SGT
+    client.loop.create_task(auto_close_task_runner(NAIRI_LUVI_AUTO_CLOSE_THREAD_CHANNEL_IDS, 22, 0))  # 10PM SGT
     await client.tree.sync()  # sync globally
 
 # --- Main entry point
