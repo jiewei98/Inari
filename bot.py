@@ -91,7 +91,13 @@ PRINT_RANGES = {
     1423931481411289148: {"tier": "Smr25", "range": None},  # No print range enforcement
 
     # Xmas25/Christmas channel
-    1429445292213669888: {"tier": "Xmas25", "range": None},  # No print range enforcement
+    1456977500482699338: {"tier": "Xmas25", "range": None},  # No print range enforcement
+
+    # Chroma channel
+    1456297824814764082: {
+        "tier": ["Smr25", "Xmas25"],
+        "range": (1, 10)
+    },
 }
 MESSAGE_TIMEOUT = 60  # seconds
 MIN_THREAD_AGE_HOURS = 20 # 20 hours for actual
@@ -177,7 +183,7 @@ def extract_owner_and_mention(embed):
 
     return owner_mention
 
-# Thread creation to handle rate limit
+# Thread creation to handle rate limit 
 async def create_thread_with_rate_limit(channel, message, card_name):
     try:
         thread = await channel.create_thread(
@@ -185,7 +191,21 @@ async def create_thread_with_rate_limit(channel, message, card_name):
             message=message,
             type=discord.ChannelType.public_thread
         )
+
+        # --- DELETE "Inari started a thread" system message ---
+        async for msg in channel.history(limit=5):
+            if (
+                msg.type == discord.MessageType.thread_created
+                and msg.author == client.user
+            ):
+                try:
+                    await msg.delete()
+                except discord.Forbidden:
+                    pass
+                break
+
         return thread
+
     except discord.errors.HTTPException as e:
         if e.code == 429:  # Rate-limited
             retry_after = e.retry_after  # Discord will send how long to wait before retrying
@@ -377,7 +397,13 @@ async def on_message(message):
             card_code, card_print = parse_card_line_for_code_and_print(raw_card_line)
             actual_tier = get_card_tier_from_embed(embed)
 
-            if actual_tier != expected_tier:
+            allowed_tiers = channel_config["tier"]
+
+            # Normalize to list
+            if isinstance(allowed_tiers, str):
+                allowed_tiers = [allowed_tiers]
+
+            if actual_tier not in allowed_tiers:
                 # Wrong tier → delete messages + warn
                 try:
                     await message.delete()
@@ -389,11 +415,12 @@ async def on_message(message):
                 except (discord.NotFound, discord.Forbidden):
                     pass
 
+                allowed_tiers_str = ", ".join(allowed_tiers)
                 warning_channel = client.get_channel(WARNING_CHANNEL_ID)
                 if warning_channel:
                     await warning_channel.send(
                         f"{message.author.mention}, your recently posted card `{card_code}` is **{actual_tier}**, "
-                        f"which is not allowed in {message.channel.mention}. Please check the card tier and post in the correct channel."
+                        f"but only **{allowed_tiers_str}** cards are allowed in {message.channel.mention}."
                     )
                 return  # Don't continue to print check
 
