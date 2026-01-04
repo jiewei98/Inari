@@ -355,7 +355,6 @@ async def on_message(message):
             return
 
         channel_config = PRINT_RANGES[message.channel.id]
-        expected_tier = channel_config["tier"]
         allowed_range = channel_config["range"]
         parts = content.lower().strip().split()
 
@@ -425,20 +424,45 @@ async def on_message(message):
                 return  # Don't continue to print check
 
             # Tier is valid → now do print check
-            match = re.search(r"P?(\d+)", card_print)
-            if not match:
-                return
-
-            print_number = int(match.group(1))
-
-            if allowed_range is not None:
-                allowed_min, allowed_max = allowed_range
-                match = re.search(r"P?(\d+)", card_print)
+            # Event printless channels
+            if allowed_range is None:
+                match = re.fullmatch(r"P(\d+)", card_print)
                 if not match:
                     return
-
+                
                 print_number = int(match.group(1))
-                if print_number < allowed_min or print_number > allowed_max:
+
+                try:
+                    await message.delete()
+                except discord.Forbidden:
+                    pass
+
+                try:
+                    await bot_reply.delete()
+                except (discord.NotFound, discord.Forbidden):
+                    pass
+
+                warning_channel = client.get_channel(WARNING_CHANNEL_ID)
+                if warning_channel:
+                    await warning_channel.send(
+                        f"{message.author.mention}, your recently posted card `{card_code}` has print number **{print_number}**, "
+                        f"which is not allowed in {message.channel.mention}. Please check the print number and post in the correct channel."
+                    )
+                return
+                
+            # Chroma and normal channels
+            else:
+                allowed_min, allowed_max = allowed_range
+                match = re.fullmatch(r"P(\d+)", card_print)
+                valid = True
+                if not match:
+                    print_number = card_print
+                    valid = False
+                else:
+                    print_number = int(match.group(1))
+                    if print_number < allowed_min or print_number > allowed_max:
+                        valid = False
+                if not valid:
                     try:
                         await message.delete()
                     except discord.Forbidden:
@@ -455,6 +479,7 @@ async def on_message(message):
                             f"{message.author.mention}, your recently posted card `{card_code}` has print number **{print_number}**, "
                             f"which is not allowed in {message.channel.mention}. Please check the print number and post in the correct channel."
                         )
+                    return
 
         except asyncio.TimeoutError:
             return
