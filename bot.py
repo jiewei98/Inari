@@ -47,6 +47,8 @@ NAIRI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
     1391049063129944195, # nairi-code-auction
 }
 LUVI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
+    # 1403052540223815700, # Test channel
+
     # Luvi auction channels
     1447912106233036992,
     1444953850577420288,
@@ -211,6 +213,29 @@ async def create_thread_with_rate_limit(channel, message, card_name):
             retry_after = e.retry_after  # Discord will send how long to wait before retrying
             await asyncio.sleep(retry_after)
             return await create_thread_with_rate_limit(channel, message, card_name)  # Retry
+
+@client.event
+async def on_thread_create(thread: discord.Thread):
+    # Only apply to Luvi auction channels
+    if thread.parent_id not in LUVI_AUTO_CLOSE_THREAD_CHANNEL_IDS:
+        return
+
+    channel = thread.parent
+    if not channel:
+        return
+
+    # Look for the system message "X started a thread"
+    async for msg in channel.history(limit=5):
+        if (
+            msg.type == discord.MessageType.thread_created
+            and msg.reference
+            and msg.reference.channel_id == thread.id
+        ):
+            try:
+                await msg.delete()
+            except discord.Forbidden:
+                pass
+            break
 
 @client.event
 async def on_message(message):
