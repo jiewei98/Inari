@@ -45,6 +45,7 @@ NAIRI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
     1355878579375833098, # nairi-auction-4
     1431982093935579136, # nairi-auction-5
     1391049063129944195, # nairi-code-auction
+    1472554605111017543, # nairi-cosmetic-auction
 }
 LUVI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
     # 1403052540223815700, # Test channel
@@ -95,9 +96,12 @@ PRINT_RANGES = {
     # Xmas25/Christmas channel
     1456977500482699338: {"tier": "Xmas25", "range": None},  # No print range enforcement
 
+    # Val26/Valentine channel
+    1455939723762864250: {"tier": "Val26", "range": None},  # No print range enforcement
+
     # Chroma channel
     1456297824814764082: {
-        "tier": ["Smr25", "Xmas25"],
+        "tier": ["Smr25", "Xmas25", "Val26"],
         "range": (1, 10)
     },
 }
@@ -158,6 +162,7 @@ def get_card_tier_from_embed(embed):
         "sheCBQAkqGiVa5nJ/f5vSwL8CFeHeImHaA==": "T2",
         "dAiCBQAkmWa5SI2m+HVgYwXYCGeIZ4h4lw==": "Smr25",
         "KymCDQAkGfm6N4Scl2dnYF9FB2iHZ4Z5lw==": "Xmas25",
+        "b1iCBQIkOceaVpCNynZ2YGcHB3iIZ4Z5pw==": "Val26",
     }
 
     placeholder = ""
