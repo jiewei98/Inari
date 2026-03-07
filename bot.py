@@ -57,6 +57,7 @@ LUVI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
     1447220023247765709,
     1451918231269937299,
     1454708241354326210,
+    1478016199223672904,
 }
 NAIRI_LUVI_AUTO_CLOSE_THREAD_CHANNEL_IDS = NAIRI_AUTO_CLOSE_THREAD_CHANNEL_IDS.union(LUVI_AUTO_CLOSE_THREAD_CHANNEL_IDS)
 SOFI_AUTO_CLOSE_THREAD_CHANNEL_IDS = {
@@ -158,9 +159,9 @@ def parse_card_line_for_code_and_print(raw_card_line):
 # Extract card tier
 def get_card_tier_from_embed(embed):
     TIER_PLACEHOLDER_MAP = {
-        "sReCBQAkp3iWWpmo+/1/SwL8CGeIaImHZw==": "T1",
-        "sheCBQAkqGiVa5nJ/f5vSwL8CFeHeImHaA==": "T2",
-        "dAiCBQAkmWa5SI2m+HVgYwXYCGeIZ4h4lw==": "Smr25",
+        "8ReCBQIkKejmCJuYe19FrwU6B3iHeIl3Zw==": "T1",
+        "8veBBQAkJ7rYGK2XDXeYb5b5B2iHeIl3WA==": "T2",
+        "cgiCBQAkSsTJFnWM+Gdm0ICjB3iIZ4Z5lw==": "Smr25",
         "KymCDQAkGfm6N4Scl2dnYF9FB2iHZ4Z5lw==": "Xmas25",
         "b1iCBQIkOceaVpCNynZ2YGcHB3iIZ4Z5pw==": "Val26",
     }
