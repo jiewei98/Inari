@@ -132,29 +132,32 @@ async def expire_user_mapping(user_id, delay):
     await asyncio.sleep(delay)
     clear_user_data(user_id)
 
-# Extract card code
-def extract_card_codes_from_field(field_value):
-    codes = []
-    lines = field_value.strip().splitlines()
+# Extract card info
+def parse_description_for_card_info(description):
+    lines = description.splitlines()
 
-    for line in lines:
-        parts = line.split('•')
-        if len(parts) >= 4:
-            # The third • segment should contain the card code inside backticks
-            raw_segment = parts[3].strip()
-            match = re.search(r'`([^`]+)`', raw_segment)
-            if match:
-                code = match.group(1).strip()
-                codes.append(code)
-    return codes
+    # --- SERIES (line 0)
+    series = lines[0].strip("* ") if len(lines) > 0 else "Unknown"
 
-# Extract card code and print number
-def parse_card_line_for_code_and_print(raw_card_line):
-    code_match = re.findall(r"`([^`]+)`", raw_card_line)
-    card_code = code_match[0] if len(code_match) > 0 else "Unknown"
-    card_print = code_match[1] if len(code_match) > 1 else "Unknown"
-    card_print = card_print.replace("P-", "P")
-    return card_code, card_print
+    # --- CARD + PRINT (line 1)
+    card_code = "Unknown"
+    card_print = "Unknown"
+
+    if len(lines) > 1:
+        card_match = re.search(r"`([A-Z0-9]+)`\s*·\s*`P-(\d+)`", lines[1])
+        if card_match:
+            card_code = card_match.group(1)
+            card_print = f"P{card_match.group(2)}"
+
+    # --- OWNER (line 2)
+    owner_mention = "Unknown"
+
+    if len(lines) > 2:
+        owner_match = re.search(r"<@!?(\d+)>", lines[2])
+        if owner_match:
+            owner_mention = f"<@{owner_match.group(1)}>"
+
+    return series, card_code, card_print, owner_mention
 
 # Extract card tier
 def get_card_tier_from_embed(embed):
@@ -170,7 +173,7 @@ def get_card_tier_from_embed(embed):
     if embed.thumbnail and hasattr(embed.thumbnail, "placeholder"):
         placeholder = embed.thumbnail.placeholder
 
-    return TIER_PLACEHOLDER_MAP.get(placeholder, "T1")  # Default to T1 if unknown
+    return TIER_PLACEHOLDER_MAP.get(placeholder, "")  # Default to "" if unknown
 
 # Extract the user's name or user ID
 def extract_owner_and_mention(embed):
@@ -327,60 +330,28 @@ async def on_message(message):
                 raw_pref = raw_pref.replace(alias, full)
             preference = raw_pref.strip()
 
+        # Extract card info
         card_name = embed.title or "Unknown"
-        if not (card_name.startswith("**") and card_name.endswith("**")):
+        card_tier = get_card_tier_from_embed(embed)
+
+        if card_tier == "":
             await message.channel.send("read <#1348292826609221642> on how to use `%auc`")
             return
 
-        card_series = fields[0].value.strip() if len(fields) > 0 else "Unknown"
-        raw_card_line = fields[1].value.strip() if len(fields) > 1 else ""
-        owned_by = fields[2].value.strip() if len(fields) > 2 else "Unknown"
-
-        # Extract card code, print number and card tier
-        card_code, card_print = parse_card_line_for_code_and_print(raw_card_line)
-        card_tier = get_card_tier_from_embed(embed)
+        desc = embed.description or ""
+        card_series, card_code, card_print, owned_by = parse_description_for_card_info(desc)
 
         formatted = (
             f"Card Code: {card_code}\n"
             f"{card_print} • {card_name} • {card_series} [ {card_tier} ]\n"
-            f"{owned_by}\n"
+            f"Owned By: {owned_by}\n"
             f"Preference: {preference}"
         )
 
         await message.channel.send(formatted)
         return
-
-    # --- Feature 2: 'nc' code tracking ---
-    if content == "nc" or content.startswith("nc ") or content == "ncollection" or content.startswith("ncollection "):
-        # Clear old mappings for this user
-        clear_user_data(message.author.id)
-
-        # Start timeout to expire mapping
-        asyncio.create_task(expire_user_mapping(message.author.id, MESSAGE_TIMEOUT))
-
-        def check(m):
-            return m.author.id == NAIRI_BOT_ID and m.channel == message.channel
-
-        try:
-            bot_message = await client.wait_for("message", timeout=10.0, check=check)
-
-            for _ in range(10):
-                if bot_message.embeds:
-                    break
-                await asyncio.sleep(0.5)
-                bot_message = await message.channel.fetch_message(bot_message.id)
-
-            if not bot_message.embeds:
-                return
-
-            message_user_map[bot_message.id] = message.author.id
-            user_wants_to_copy[message.author.id] = False  # Reset until 📝
-            await bot_message.add_reaction("📝")
-
-        except asyncio.TimeoutError:
-            return
         
-    # --- Feature 4: nv/nview command enforcement in XXX channel ---
+    # --- Feature 2: nv/nview command enforcement in XXX channel ---
     if message.channel.id in PRINT_RANGES:
         if message.author.bot or message.author.id == NAIRI_BOT_ID:
             return
@@ -417,14 +388,10 @@ async def on_message(message):
                 return
 
             embed = bot_reply.embeds[0]
-            fields = embed.fields
-
-            if len(fields) < 2:
-                return
 
             # Get card data
-            raw_card_line = fields[1].value.strip()
-            card_code, card_print = parse_card_line_for_code_and_print(raw_card_line)
+            desc = embed.description or ""
+            _, card_code, card_print, _ = parse_description_for_card_info(desc)
             actual_tier = get_card_tier_from_embed(embed)
 
             allowed_tiers = channel_config["tier"]
@@ -515,64 +482,6 @@ async def on_message(message):
         except asyncio.TimeoutError:
             return
 
-@client.event
-async def on_reaction_add(reaction, user):
-    if user == client.user:
-        return
-    if reaction.message.author.id != NAIRI_BOT_ID or reaction.emoji != "📝":
-        return
-
-    user_id = message_user_map.get(reaction.message.id)
-    if user_id is None or user_id != user.id:
-        return
-
-    user_wants_to_copy[user.id] = True
-    await extract_and_send_card_codes(reaction.message, user)
-
-@client.event
-async def on_message_edit(before, after):
-    if after.author.id != NAIRI_BOT_ID or not after.embeds:
-        return
-
-    user_id = message_user_map.get(after.id)
-    if user_id is None or not user_wants_to_copy.get(user_id, False):
-        return
-
-    user = await client.fetch_user(user_id)
-    await extract_and_send_card_codes(after, user)
-
-async def extract_and_send_card_codes(message, user):
-    if not user_wants_to_copy.get(user.id, False):
-        return
-
-    if user.id not in user_card_codes:
-        user_card_codes[user.id] = []
-
-    stored = user_card_codes[user.id]
-    before_count = len(stored)
-
-    for embed in message.embeds:
-        for field in embed.fields:
-            new_codes = extract_card_codes_from_field(field.value)
-            for code in new_codes:
-                if code not in stored:
-                    stored.append(code)
-
-
-    if len(stored) > before_count:
-        combined = ', '.join(stored)
-        response_text = f"{combined}"
-
-        previous_msg = user_response_message.get(user.id)
-        if previous_msg:
-            try:
-                await previous_msg.edit(content=response_text)
-            except discord.NotFound:
-                new_msg = await message.reply(response_text, mention_author=False)
-                user_response_message[user.id] = new_msg
-        else:
-            new_msg = await message.reply(response_text, mention_author=False)
-            user_response_message[user.id] = new_msg
 
 @client.tree.context_menu(name="Delete Nairi Message")
 async def delete_message(interaction: discord.Interaction, message: discord.Message):
@@ -610,7 +519,7 @@ async def delete_message(interaction: discord.Interaction, message: discord.Mess
             "I don't have permission to delete that message.", ephemeral=True
         )
 
-# --- Feature 5: auto closing auction channels ---
+# --- Feature 4: auto closing auction channels ---
 async def close_threads(channels_to_close, guild, now_utc):
     all_threads = await guild.active_threads()
 
