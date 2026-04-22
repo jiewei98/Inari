@@ -144,10 +144,17 @@ def parse_description_for_card_info(description):
     card_print = "Unknown"
 
     if len(lines) > 1:
-        card_match = re.search(r"`([A-Z0-9]+)`\s*·\s*`P-(\d+)`", lines[1])
+        card_match = re.search(r"`([A-Z0-9]+)`\s*·\s*`([^`]+)`", lines[1])
         if card_match:
             card_code = card_match.group(1)
-            card_print = f"P{card_match.group(2)}"
+            raw_print = card_match.group(2)
+
+            # Normalize only if it's P-XXX
+            match = re.fullmatch(r"P-(\d+)", raw_print, re.IGNORECASE)
+            if match:
+                card_print = f"P{match.group(1)}"
+            else:
+                card_print = raw_print
 
     # --- OWNER (line 2)
     owner_mention = "Unknown"
