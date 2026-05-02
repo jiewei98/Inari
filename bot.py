@@ -100,9 +100,12 @@ PRINT_RANGES = {
     # Val26/Valentine channel
     1455939723762864250: {"tier": "Val26", "range": None},  # No print range enforcement
 
+    # Skr26/Spring channel
+    1499991687525826630: {"tier": "Skr26", "range": None},  # No print range enforcement
+
     # Chroma channel
     1456297824814764082: {
-        "tier": ["Smr25", "Xmas25", "Val26"],
+        "tier": ["Smr25", "Xmas25", "Val26", "Skr26"],
         "range": (1, 10)
     },
 }
@@ -174,6 +177,7 @@ def get_card_tier_from_embed(embed):
         "cgiCBQAkSsTJFnWM+Gdm0ICjB3iIZ4Z5lw==": "Smr25",
         "KymCDQAkGfm6N4Scl2dnYF9FB2iHZ4Z5lw==": "Xmas25",
         "b1iCBQIkOceaVpCNynZ2YGcHB3iIZ4Z5pw==": "Val26",
+        "7GiCDQQkiFe5No9jeHdmcGQHB3iHaIaJlw==": "Skr26",
     }
 
     placeholder = ""
@@ -323,7 +327,6 @@ async def on_message(message):
             return
 
         embed = original.embeds[0]
-        fields = embed.fields
         command_parts = content.split(maxsplit=1)
         preference = "<:jades:1351944414104129599>"
 
