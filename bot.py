@@ -29,6 +29,9 @@ WHITELISTED_USERS = {
     313927988813234176, # Unknown
     182309538911879179, # Furkat
     827546618961330177, # Funke
+
+    376351892214775808, # Kuro
+    317923965266034688, # Ish
 }
 NAIRI_BOT_ID = 1312830013573169252 # Nairi bot ID
 SOFI_BOT_ID = 853629533855809596 # Sofi bot ID
@@ -91,8 +94,11 @@ PRINT_RANGES = {
     1423932565378564188: {"tier": "T2", "range": (11, 99)},
     1423932153615482983: {"tier": "T2", "range": (100, 999)},
 
-    # Smr25/Summer channel
-    1423931481411289148: {"tier": "Smr25", "range": None},  # No print range enforcement
+    # Smr25/Smr26/Summer channel
+    1423931481411289148: {
+        "tier": ["Smr25", "Smr26"],
+        "range": None,
+    },
 
     # Xmas25/Christmas channel
     1456977500482699338: {"tier": "Xmas25", "range": None},  # No print range enforcement
@@ -105,7 +111,7 @@ PRINT_RANGES = {
 
     # Chroma channel
     1456297824814764082: {
-        "tier": ["Smr25", "Xmas25", "Val26", "Skr26"],
+        "tier": ["Smr25", "Smr26", "Xmas25", "Val26", "Skr26"],
         "range": (1, 10)
     },
 }
@@ -175,6 +181,7 @@ def get_card_tier_from_embed(embed):
         "8ReCBQIkKejmCJuYe19FrwU6B3iHeIl3Zw==": "T1",
         "8veBBQAkJ7rYGK2XDXeYb5b5B2iHeIl3WA==": "T2",
         "cgiCBQAkSsTJFnWM+Gdm0ICjB3iIZ4Z5lw==": "Smr25",
+        "rTiCDQIkaobZB461lndnYHcGB3iIZ4Z5lw==": "Smr26",
         "KymCDQAkGfm6N4Scl2dnYF9FB2iHZ4Z5lw==": "Xmas25",
         "b1iCBQIkOceaVpCNynZ2YGcHB3iIZ4Z5pw==": "Val26",
         "7GiCDQQkiFe5No9jeHdmcGQHB3iHaIaJlw==": "Skr26",
@@ -304,6 +311,9 @@ async def on_message(message):
                     card_owner_mention = extract_owner_and_mention(embed)
                     card_name = embed.title or "Unknown"
 
+                    if bot_msg.thread is not None:
+                        continue
+
                     try:
                         thread = await create_thread_with_rate_limit(channel, bot_msg, card_name)
                         # Ping the card owner in the thread
@@ -311,6 +321,46 @@ async def on_message(message):
                         await asyncio.sleep(1)  # Add a 1-second delay between creating threads
                     except Exception as e:
                         pass
+
+        return
+    # --- Feature 7: %threadcreate ---
+    # Check if the message is from a whitelisted user and starts with the command
+    if content.lower().startswith("%lthread"):
+        if message.author.id not in WHITELISTED_USERS:
+            return
+
+        # Determine which channels to use based on the command
+        channel_ids = LUVI_AUTO_CLOSE_THREAD_CHANNEL_IDS
+        
+        # Fetch all the relevant channels
+        for channel_id in channel_ids:
+            channel = client.get_channel(channel_id)
+
+            if not channel:
+                continue  # Skip if the channel is not available
+
+            # Fetch recent forwarded messages in the current channel
+            target_messages = []
+            async for msg in channel.history(limit=25):
+                target_messages.append(msg)
+
+            target_messages = [
+                msg for msg in target_messages
+                if getattr(msg, "message_snapshots", None) and msg.created_at > datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=21)
+            ]
+
+            if not target_messages:
+                continue  # Skip to the next channel if no valid messages are found
+
+            # Loop through the recent forwarded messages to find an appropriate one for creating a thread
+            for forwarded_msg in target_messages:
+                if forwarded_msg.thread is not None:
+                    continue
+                try:
+                    await create_thread_with_rate_limit(channel, forwarded_msg, "-")
+                    await asyncio.sleep(1)  # Add a 1-second delay between creating threads
+                except Exception as e:
+                    pass
 
         return
 
