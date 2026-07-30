@@ -3,6 +3,7 @@ import os
 import re
 import asyncio
 import datetime
+import random
 
 # --- Third-party packages ---
 import discord
@@ -115,6 +116,8 @@ PRINT_RANGES = {
         "range": (1, 10)
     },
 }
+LUVI_RAID_CHANNEL_ID = 1532296462682292355
+RAID_TIMER = 300
 MESSAGE_TIMEOUT = 60  # seconds
 MIN_THREAD_AGE_HOURS = 20 # 20 hours for actual
 # MIN_THREAD_AGE_HOURS = 0.25 # 15 minutes for testing
@@ -125,6 +128,7 @@ user_card_codes = {}           # user_id: list of card codes
 message_user_map = {}          # message_id: user_id
 user_response_message = {}     # user_id: response message
 user_wants_to_copy = {}        # user_id: bool
+active_raids = {}              # RaidSession
 
 # --- Methods declaration
 # Cleanup function
@@ -240,6 +244,152 @@ async def create_thread_with_rate_limit(channel, message, card_name):
             retry_after = e.retry_after  # Discord will send how long to wait before retrying
             await asyncio.sleep(retry_after)
             return await create_thread_with_rate_limit(channel, message, card_name)  # Retry
+
+class RaidSession:
+    def __init__(self, owner):
+        self.owner = owner
+        self.members = []
+        self.message = None
+        self.view = None
+        self.ended = False
+        self.end_time = discord.utils.utcnow() + datetime.timedelta(seconds=RAID_TIMER)
+        self.task = None
+
+class RaidView(discord.ui.View):
+    def __init__(self, session):
+        super().__init__(timeout=RAID_TIMER)
+        self.session = session
+
+    def make_embed(self):
+        timestamp = int(self.session.end_time.timestamp())
+        embed = discord.Embed(
+            title="⭐ Luvi Raid Signup",
+            description = (
+                f"Host: {self.session.owner.mention}\n\n"
+                "Click **Join** to participate!\n\n"
+                f"Ends <t:{timestamp}:R>"
+            ),
+            color=discord.Color.gold()
+        )
+
+        if self.session.members:
+            participants = "\n".join(
+                f"{i}. {member.display_name}"
+                for i, member in enumerate(self.session.members, 1)
+            )
+        else:
+            participants = "Nobody yet."
+
+        embed.add_field(
+            name=f"Participants ({len(self.session.members)})",
+            value=participants,
+            inline=False
+        )
+
+        return embed
+
+    async def finish(self):
+        if self.session.ended:
+            return
+
+        self.session.ended = True
+
+        for item in self.children:
+            item.disabled = True
+
+        await self.session.message.edit(
+            embed=self.make_embed(),
+            view=self
+        )
+
+        self.stop()
+
+        members = self.session.members.copy()
+        random.shuffle(members)
+
+        lines = [f"{self.session.owner.mention} - Host"]
+
+        for i, member in enumerate(members, start=1):
+            if i <= 4:
+                lines.append(f"{member.mention} - {i}")
+            else:
+                lines.append(f"{member.display_name} - {i}")
+
+        await self.session.message.reply(
+            "**Raid Order**\n\n" + "\n".join(lines)
+        )
+
+        active_raids.pop(
+            self.session.message.channel.id,
+            None
+        )
+
+    async def on_timeout(self):
+        await self.finish()
+
+    @discord.ui.button(
+        label="Join",
+        style=discord.ButtonStyle.green
+    )
+    async def join(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        if interaction.user == self.session.owner:
+            await interaction.response.defer()
+            return
+
+        if interaction.user in self.session.members:
+            await interaction.response.defer()
+            return
+
+        self.session.members.append(interaction.user)
+
+        await interaction.response.edit_message(
+            embed=self.make_embed(),
+            view=self
+        )
+
+    @discord.ui.button(
+        label="Leave",
+        style=discord.ButtonStyle.red
+    )
+    async def leave(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        if interaction.user == self.session.owner:
+            await interaction.response.defer()
+            return
+
+        if interaction.user not in self.session.members:
+            await interaction.response.defer()
+            return
+
+        self.session.members.remove(interaction.user)
+
+        await interaction.response.edit_message(
+            embed=self.make_embed(),
+            view=self
+        )
+
+    @discord.ui.button(
+        label="End",
+        style=discord.ButtonStyle.grey
+    )
+    async def end(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        if interaction.user != self.session.owner:
+            await interaction.response.send_message(
+                "Only the raid owner can end this raid.",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.defer()
+        await self.finish()
 
 @client.event
 async def on_thread_create(thread: discord.Thread):
@@ -541,6 +691,39 @@ async def on_message(message):
 
         except asyncio.TimeoutError:
             return
+
+    # --- Feature 8: luvi raid ---
+    if content.lower() in ("lsr", "lstartraid"):
+
+        if message.channel.id != LUVI_RAID_CHANNEL_ID:
+            return
+
+        existing = active_raids.get(message.channel.id)
+
+        if existing and not existing.ended:
+
+            await message.reply(
+                f"A raid is already running!\n"
+                f"Please use this one:\n{existing.message.jump_url}"
+            )
+
+            return
+
+        session = RaidSession(message.author)
+
+        view = RaidView(session)
+        session.view = view
+
+        msg = await message.channel.send(
+            embed=view.make_embed(),
+            view=view
+        )
+
+        session.message = msg
+
+        active_raids[message.channel.id] = session
+
+        return
 
 
 @client.tree.context_menu(name="Delete Nairi Message")
